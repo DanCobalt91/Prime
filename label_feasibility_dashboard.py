@@ -3,7 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
-import plotly.graph_objects as go
+from scipy.interpolate import make_interp_spline
 
 # Embedded data
 speed_range = np.arange(10, 41, 1)
@@ -32,22 +32,29 @@ for speed in speed_range:
 
 # Create DataFrame
 feas_df = pd.DataFrame.from_records(records)
-
-# Pivot table for heatmap and 3D
 pivot_table = feas_df.pivot(index="Label Size (mm)", columns="Speed (m/min)", values="Feasible")
 
 # Streamlit UI
 st.set_page_config(layout="wide")
 st.title("Label Feasibility Explorer")
 
-# Tabs for separate views
-tab1, tab2, tab3 = st.tabs(["Line Chart", "Heatmap", "3D Surface"])
+# Tabs for simplified interface
+tab1, tab2 = st.tabs(["Line Chart", "Heatmap"])
 
 with tab1:
-    st.header("Minimum Feasible Label Size vs Speed")
+    st.header("Smoothed Minimum Feasible Label Size vs Speed")
     line_df = feas_df[feas_df['Feasible'] == 1].groupby("Speed (m/min)")["Label Size (mm)"].min().reset_index()
-    fig = px.line(line_df, x="Speed (m/min)", y="Label Size (mm)", markers=True,
-                  title="Minimum Feasible Label Size Required at Each Speed")
+
+    # Interpolate for smoother curve
+    speeds = line_df["Speed (m/min)"].values
+    min_labels = line_df["Label Size (mm)"].values
+    speeds_smooth = np.linspace(speeds.min(), speeds.max(), 300)
+    spline = make_interp_spline(speeds, min_labels, k=3)
+    labels_smooth = spline(speeds_smooth)
+
+    fig = px.line(x=speeds_smooth, y=labels_smooth, labels={'x': 'Speed (m/min)', 'y': 'Min Feasible Label Size (mm)'})
+    fig.update_traces(mode='lines+markers')
+    fig.update_layout(title="Smoothed Curve of Feasible Label Size vs Speed")
     st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
@@ -61,17 +68,4 @@ with tab2:
     fig.update_layout(title="Label Feasibility Heatmap",
                       xaxis_title="Speed (m/min)",
                       yaxis_title="Label Size (mm)")
-    st.plotly_chart(fig, use_container_width=True)
-
-with tab3:
-    st.header("3D Surface Plot of Feasibility")
-    fig = go.Figure(data=[go.Surface(z=pivot_table.values,
-                                     x=speed_range,
-                                     y=label_size_range,
-                                     colorscale="Viridis")])
-    fig.update_layout(title="3D Surface: Label Size vs Speed Feasibility",
-                      scene=dict(xaxis_title='Speed (m/min)',
-                                 yaxis_title='Label Size (mm)',
-                                 zaxis_title='Feasibility'),
-                      autosize=True)
     st.plotly_chart(fig, use_container_width=True)
